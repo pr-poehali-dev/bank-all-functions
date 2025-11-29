@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import Icon from '@/components/ui/icon';
 import { toast } from 'sonner';
@@ -46,15 +46,16 @@ const Index = () => {
   const [recipientCard, setRecipientCard] = useState('');
   const [terminalName, setTerminalName] = useState('');
   const [terminalPrice, setTerminalPrice] = useState('');
+  const [topupAmount, setTopupAmount] = useState('');
+  const [topupCard, setTopupCard] = useState('');
+  const [selectedBank, setSelectedBank] = useState('sberbank');
+  const [isTopupDialogOpen, setIsTopupDialogOpen] = useState(false);
   
   const [transactions, setTransactions] = useState<Transaction[]>([
     { id: '1', type: 'receive', amount: 50, from: 'Система', date: '2025-11-29' }
   ]);
 
   const [terminals, setTerminals] = useState<Terminal[]>([]);
-  const [topupAmount, setTopupAmount] = useState('');
-  const [selectedBank, setSelectedBank] = useState('sberbank');
-  const [selectedTerminal, setSelectedTerminal] = useState<Terminal | null>(null);
 
   const [achievements, setAchievements] = useState<Achievement[]>([
     { id: '1', title: 'Первые шаги', description: 'Зарегистрируйтесь в системе', unlocked: true, icon: 'Rocket' },
@@ -167,7 +168,12 @@ const Index = () => {
       return;
     }
 
-    toast.loading('Перенаправление на оплату...');
+    if (!topupCard || topupCard.length < 16) {
+      toast.error('Введите корректный номер карты');
+      return;
+    }
+
+    toast.loading('Обработка платежа...');
     
     setTimeout(() => {
       setBalance(balance + amount);
@@ -182,6 +188,8 @@ const Index = () => {
 
       toast.success(`✅ Баланс пополнен на ${amount}₽`);
       setTopupAmount('');
+      setTopupCard('');
+      setIsTopupDialogOpen(false);
       addXP(15);
       unlockAchievement('5');
 
@@ -225,6 +233,20 @@ const Index = () => {
     }, 1500);
   };
 
+  const getTransactionIcon = (type: string) => {
+    if (type === 'topup') return 'ArrowDownToLine';
+    if (type === 'purchase') return 'Coins';
+    if (type === 'receive') return 'ArrowDown';
+    return 'ArrowUp';
+  };
+  
+  const getTransactionLabel = (type: string) => {
+    if (type === 'topup') return 'Пополнение';
+    if (type === 'purchase') return 'Доход';
+    if (type === 'receive') return 'Получено';
+    return 'Отправлено';
+  };
+
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -262,25 +284,25 @@ const Index = () => {
           <TabsList className="grid w-full grid-cols-4 glass">
             <TabsTrigger value="wallet">
               <Icon name="Wallet" size={18} className="mr-2" />
-              Кошелёк
+              <span className="hidden sm:inline">Кошелёк</span>
             </TabsTrigger>
             <TabsTrigger value="transfer">
               <Icon name="Send" size={18} className="mr-2" />
-              Переводы
+              <span className="hidden sm:inline">Переводы</span>
             </TabsTrigger>
             <TabsTrigger value="terminals">
               <Icon name="Store" size={18} className="mr-2" />
-              Терминалы
+              <span className="hidden sm:inline">Терминалы</span>
             </TabsTrigger>
             <TabsTrigger value="achievements">
               <Icon name="Trophy" size={18} className="mr-2" />
-              Достижения
+              <span className="hidden sm:inline">Награды</span>
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="wallet" className="space-y-4">
             <Card className="glass border-0 p-6 mb-4">
-              <Dialog>
+              <Dialog open={isTopupDialogOpen} onOpenChange={setIsTopupDialogOpen}>
                 <DialogTrigger asChild>
                   <Button className="w-full bg-success hover:bg-success/90" size="lg">
                     <Icon name="Plus" size={20} className="mr-2" />
@@ -290,12 +312,13 @@ const Index = () => {
                 <DialogContent className="glass border-muted">
                   <DialogHeader>
                     <DialogTitle>Пополнение баланса</DialogTitle>
+                    <DialogDescription>Выберите банк и введите данные карты</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 mt-4">
                     <div>
                       <Label>Выберите банк</Label>
-                      <RadioGroup value={selectedBank} onValueChange={setSelectedBank} className="mt-2">
-                        <div className="flex items-center space-x-2 glass p-3 rounded-lg">
+                      <RadioGroup value={selectedBank} onValueChange={setSelectedBank} className="mt-2 space-y-2">
+                        <div className="flex items-center space-x-2 glass p-3 rounded-lg cursor-pointer hover:bg-muted/20">
                           <RadioGroupItem value="sberbank" id="sberbank" />
                           <Label htmlFor="sberbank" className="flex-1 cursor-pointer">
                             <div className="flex items-center gap-2">
@@ -304,7 +327,7 @@ const Index = () => {
                             </div>
                           </Label>
                         </div>
-                        <div className="flex items-center space-x-2 glass p-3 rounded-lg">
+                        <div className="flex items-center space-x-2 glass p-3 rounded-lg cursor-pointer hover:bg-muted/20">
                           <RadioGroupItem value="tinkoff" id="tinkoff" />
                           <Label htmlFor="tinkoff" className="flex-1 cursor-pointer">
                             <div className="flex items-center gap-2">
@@ -314,6 +337,17 @@ const Index = () => {
                           </Label>
                         </div>
                       </RadioGroup>
+                    </div>
+                    <div>
+                      <Label>Номер карты</Label>
+                      <Input
+                        type="text"
+                        placeholder="0000 0000 0000 0000"
+                        value={topupCard}
+                        onChange={(e) => setTopupCard(e.target.value.replace(/\s/g, ''))}
+                        className="glass border-muted"
+                        maxLength={16}
+                      />
                     </div>
                     <div>
                       <Label>Сумма пополнения</Label>
@@ -328,7 +362,7 @@ const Index = () => {
                     </div>
                     <Button onClick={handleTopup} className="w-full bg-primary" size="lg">
                       <Icon name="CreditCard" size={20} className="mr-2" />
-                      Перейти к оплате
+                      Оплатить
                     </Button>
                   </div>
                 </DialogContent>
@@ -342,30 +376,16 @@ const Index = () => {
               </div>
               <div className="space-y-3">
                 {transactions.map(tx => {
-                  const getTransactionIcon = () => {
-                    if (tx.type === 'topup') return 'ArrowDownToLine';
-                    if (tx.type === 'purchase') return 'Coins';
-                    if (tx.type === 'receive') return 'ArrowDown';
-                    return 'ArrowUp';
-                  };
-                  
-                  const getTransactionLabel = () => {
-                    if (tx.type === 'topup') return 'Пополнение';
-                    if (tx.type === 'purchase') return 'Доход';
-                    if (tx.type === 'receive') return 'Получено';
-                    return 'Отправлено';
-                  };
-
                   const isPositive = tx.type === 'receive' || tx.type === 'topup' || tx.type === 'purchase';
 
                   return (
                     <div key={tx.id} className="glass rounded-lg p-4 flex items-center justify-between hover:bg-muted/20 transition-all">
                       <div className="flex items-center gap-3">
                         <div className={`p-2 rounded-full ${isPositive ? 'bg-success/20' : 'bg-destructive/20'}`}>
-                          <Icon name={getTransactionIcon()} size={20} />
+                          <Icon name={getTransactionIcon(tx.type)} size={20} />
                         </div>
                         <div>
-                          <p className="font-medium">{getTransactionLabel()}</p>
+                          <p className="font-medium">{getTransactionLabel(tx.type)}</p>
                           <p className="text-sm text-muted-foreground">{tx.from || tx.to}</p>
                         </div>
                       </div>
@@ -375,8 +395,9 @@ const Index = () => {
                         </p>
                         <p className="text-xs text-muted-foreground">{tx.date}</p>
                       </div>
-                  </div>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
             </Card>
           </TabsContent>
@@ -471,20 +492,20 @@ const Index = () => {
                           <DialogTrigger asChild>
                             <Button size="sm" variant="outline" className="glass">
                               <Icon name="QrCode" size={16} className="mr-1" />
-                              QR-код
+                              QR
                             </Button>
                           </DialogTrigger>
                           <DialogContent className="glass border-muted">
                             <DialogHeader>
                               <DialogTitle>{terminal.name}</DialogTitle>
+                              <DialogDescription>QR-код для оплаты товаров/услуг</DialogDescription>
                             </DialogHeader>
                             <div className="flex flex-col items-center gap-4 py-6">
                               <div className="bg-white p-6 rounded-xl">
                                 <div className="text-6xl">📱</div>
                               </div>
                               <p className="text-center text-muted-foreground">
-                                QR-код для оплаты<br/>
-                                <span className="font-mono text-xs">{terminal.qrCode}</span>
+                                <span className="font-mono text-xs block">{terminal.qrCode}</span>
                               </p>
                               <p className="text-2xl font-bold">{terminal.price}₽</p>
                             </div>
@@ -497,7 +518,7 @@ const Index = () => {
                         size="sm"
                       >
                         <Icon name="ShoppingCart" size={16} className="mr-2" />
-                        Симуляция покупки ({terminal.price}₽)
+                        Тест покупки ({terminal.price}₽)
                       </Button>
                     </div>
                   ))}
