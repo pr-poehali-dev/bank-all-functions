@@ -6,16 +6,28 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import Icon from '@/components/ui/icon';
 import { toast } from 'sonner';
 
 interface Transaction {
   id: string;
-  type: 'send' | 'receive';
+  type: 'send' | 'receive' | 'topup' | 'purchase';
   amount: number;
   from?: string;
   to?: string;
   date: string;
+  method?: string;
+}
+
+interface Terminal {
+  id: string;
+  name: string;
+  price: number;
+  created: string;
+  revenue: number;
+  qrCode: string;
 }
 
 interface Achievement {
@@ -39,13 +51,18 @@ const Index = () => {
     { id: '1', type: 'receive', amount: 50, from: 'Система', date: '2025-11-29' }
   ]);
 
-  const [terminals, setTerminals] = useState<any[]>([]);
+  const [terminals, setTerminals] = useState<Terminal[]>([]);
+  const [topupAmount, setTopupAmount] = useState('');
+  const [selectedBank, setSelectedBank] = useState('sberbank');
+  const [selectedTerminal, setSelectedTerminal] = useState<Terminal | null>(null);
 
   const [achievements, setAchievements] = useState<Achievement[]>([
     { id: '1', title: 'Первые шаги', description: 'Зарегистрируйтесь в системе', unlocked: true, icon: 'Rocket' },
     { id: '2', title: 'Первый перевод', description: 'Отправьте первый перевод', unlocked: false, icon: 'Send' },
     { id: '3', title: 'Предприниматель', description: 'Создайте свой терминал', unlocked: false, icon: 'Store' },
     { id: '4', title: 'Богатей', description: 'Накопите 1000₽', unlocked: false, icon: 'TrendingUp' },
+    { id: '5', title: 'Первое пополнение', description: 'Пополните баланс с карты', unlocked: false, icon: 'CreditCard' },
+    { id: '6', title: 'Первая продажа', description: 'Получите доход через терминал', unlocked: false, icon: 'Coins' },
   ]);
 
   const xpToNextLevel = level * 100;
@@ -126,19 +143,86 @@ const Index = () => {
     }
 
     setBalance(balance - fee);
-    setTerminals(prev => [...prev, {
+    const newTerminal: Terminal = {
       id: Date.now().toString(),
       name: terminalName,
       price: price,
       created: new Date().toISOString().split('T')[0],
-      revenue: 0
-    }]);
+      revenue: 0,
+      qrCode: `TERMINAL-${Date.now()}`
+    };
+    setTerminals(prev => [...prev, newTerminal]);
 
     toast.success(`🏪 Терминал "${terminalName}" создан!`);
     setTerminalName('');
     setTerminalPrice('');
     addXP(30);
     unlockAchievement('3');
+  };
+
+  const handleTopup = () => {
+    const amount = parseFloat(topupAmount);
+    if (!amount || amount < 100) {
+      toast.error('Минимальная сумма пополнения 100₽');
+      return;
+    }
+
+    toast.loading('Перенаправление на оплату...');
+    
+    setTimeout(() => {
+      setBalance(balance + amount);
+      setTransactions(prev => [{
+        id: Date.now().toString(),
+        type: 'topup',
+        amount: amount,
+        from: selectedBank === 'sberbank' ? 'Сбербанк' : 'Тинькофф',
+        date: new Date().toISOString().split('T')[0],
+        method: 'card'
+      }, ...prev]);
+
+      toast.success(`✅ Баланс пополнен на ${amount}₽`);
+      setTopupAmount('');
+      addXP(15);
+      unlockAchievement('5');
+
+      if (balance + amount >= 1000) {
+        unlockAchievement('4');
+      }
+    }, 2000);
+  };
+
+  const handlePurchase = (terminal: Terminal) => {
+    const amount = terminal.price;
+    
+    toast.loading('Обработка покупки...');
+    
+    setTimeout(() => {
+      const updatedTerminals = terminals.map(t => 
+        t.id === terminal.id ? { ...t, revenue: t.revenue + amount } : t
+      );
+      setTerminals(updatedTerminals);
+      
+      const commission = amount * 0.02;
+      const netAmount = amount - commission;
+      setBalance(balance + netAmount);
+
+      setTransactions(prev => [{
+        id: Date.now().toString(),
+        type: 'purchase',
+        amount: netAmount,
+        from: `Покупка в "${terminal.name}"`,
+        date: new Date().toISOString().split('T')[0],
+        method: 'terminal'
+      }, ...prev]);
+
+      toast.success(`💰 Получен доход ${netAmount.toFixed(2)}₽ (комиссия 2%)`);
+      addXP(20);
+      unlockAchievement('6');
+
+      if (balance + netAmount >= 1000) {
+        unlockAchievement('4');
+      }
+    }, 1500);
   };
 
   return (
@@ -195,29 +279,102 @@ const Index = () => {
           </TabsList>
 
           <TabsContent value="wallet" className="space-y-4">
+            <Card className="glass border-0 p-6 mb-4">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button className="w-full bg-success hover:bg-success/90" size="lg">
+                    <Icon name="Plus" size={20} className="mr-2" />
+                    Пополнить баланс
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="glass border-muted">
+                  <DialogHeader>
+                    <DialogTitle>Пополнение баланса</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 mt-4">
+                    <div>
+                      <Label>Выберите банк</Label>
+                      <RadioGroup value={selectedBank} onValueChange={setSelectedBank} className="mt-2">
+                        <div className="flex items-center space-x-2 glass p-3 rounded-lg">
+                          <RadioGroupItem value="sberbank" id="sberbank" />
+                          <Label htmlFor="sberbank" className="flex-1 cursor-pointer">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 bg-success/20 rounded flex items-center justify-center">💚</div>
+                              <span>Сбербанк</span>
+                            </div>
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2 glass p-3 rounded-lg">
+                          <RadioGroupItem value="tinkoff" id="tinkoff" />
+                          <Label htmlFor="tinkoff" className="flex-1 cursor-pointer">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 bg-accent/20 rounded flex items-center justify-center">💛</div>
+                              <span>Тинькофф</span>
+                            </div>
+                          </Label>
+                        </div>
+                      </RadioGroup>
+                    </div>
+                    <div>
+                      <Label>Сумма пополнения</Label>
+                      <Input
+                        type="number"
+                        placeholder="100"
+                        value={topupAmount}
+                        onChange={(e) => setTopupAmount(e.target.value)}
+                        className="glass border-muted"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">Минимум 100₽</p>
+                    </div>
+                    <Button onClick={handleTopup} className="w-full bg-primary" size="lg">
+                      <Icon name="CreditCard" size={20} className="mr-2" />
+                      Перейти к оплате
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </Card>
+
             <Card className="glass border-0 p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xl font-semibold">История транзакций</h3>
                 <Badge variant="outline">{transactions.length}</Badge>
               </div>
               <div className="space-y-3">
-                {transactions.map(tx => (
-                  <div key={tx.id} className="glass rounded-lg p-4 flex items-center justify-between hover:bg-muted/20 transition-all">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-full ${tx.type === 'receive' ? 'bg-success/20' : 'bg-destructive/20'}`}>
-                        <Icon name={tx.type === 'receive' ? 'ArrowDown' : 'ArrowUp'} size={20} />
+                {transactions.map(tx => {
+                  const getTransactionIcon = () => {
+                    if (tx.type === 'topup') return 'ArrowDownToLine';
+                    if (tx.type === 'purchase') return 'Coins';
+                    if (tx.type === 'receive') return 'ArrowDown';
+                    return 'ArrowUp';
+                  };
+                  
+                  const getTransactionLabel = () => {
+                    if (tx.type === 'topup') return 'Пополнение';
+                    if (tx.type === 'purchase') return 'Доход';
+                    if (tx.type === 'receive') return 'Получено';
+                    return 'Отправлено';
+                  };
+
+                  const isPositive = tx.type === 'receive' || tx.type === 'topup' || tx.type === 'purchase';
+
+                  return (
+                    <div key={tx.id} className="glass rounded-lg p-4 flex items-center justify-between hover:bg-muted/20 transition-all">
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-full ${isPositive ? 'bg-success/20' : 'bg-destructive/20'}`}>
+                          <Icon name={getTransactionIcon()} size={20} />
+                        </div>
+                        <div>
+                          <p className="font-medium">{getTransactionLabel()}</p>
+                          <p className="text-sm text-muted-foreground">{tx.from || tx.to}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium">{tx.type === 'receive' ? 'Получено' : 'Отправлено'}</p>
-                        <p className="text-sm text-muted-foreground">{tx.from || tx.to}</p>
+                      <div className="text-right">
+                        <p className={`font-bold ${isPositive ? 'text-success' : 'text-foreground'}`}>
+                          {isPositive ? '+' : '-'}{tx.amount.toFixed(2)}₽
+                        </p>
+                        <p className="text-xs text-muted-foreground">{tx.date}</p>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <p className={`font-bold ${tx.type === 'receive' ? 'text-success' : 'text-foreground'}`}>
-                        {tx.type === 'receive' ? '+' : '-'}{tx.amount}₽
-                      </p>
-                      <p className="text-xs text-muted-foreground">{tx.date}</p>
-                    </div>
                   </div>
                 ))}
               </div>
@@ -301,12 +458,47 @@ const Index = () => {
                 <div className="grid gap-4">
                   {terminals.map(terminal => (
                     <div key={terminal.id} className="glass rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold text-lg">{terminal.name}</h4>
-                        <Badge variant="secondary">{terminal.price}₽</Badge>
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h4 className="font-semibold text-lg">{terminal.name}</h4>
+                          <p className="text-sm text-muted-foreground">Создан: {terminal.created}</p>
+                        </div>
+                        <Badge variant="secondary" className="text-lg px-3 py-1">{terminal.price}₽</Badge>
                       </div>
-                      <p className="text-sm text-muted-foreground">Создан: {terminal.created}</p>
-                      <p className="text-sm text-success mt-1">Выручка: {terminal.revenue}₽</p>
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-sm text-success font-medium">Выручка: {terminal.revenue}₽</p>
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button size="sm" variant="outline" className="glass">
+                              <Icon name="QrCode" size={16} className="mr-1" />
+                              QR-код
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="glass border-muted">
+                            <DialogHeader>
+                              <DialogTitle>{terminal.name}</DialogTitle>
+                            </DialogHeader>
+                            <div className="flex flex-col items-center gap-4 py-6">
+                              <div className="bg-white p-6 rounded-xl">
+                                <div className="text-6xl">📱</div>
+                              </div>
+                              <p className="text-center text-muted-foreground">
+                                QR-код для оплаты<br/>
+                                <span className="font-mono text-xs">{terminal.qrCode}</span>
+                              </p>
+                              <p className="text-2xl font-bold">{terminal.price}₽</p>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                      <Button 
+                        onClick={() => handlePurchase(terminal)}
+                        className="w-full bg-success/20 hover:bg-success/30 text-success border border-success/50"
+                        size="sm"
+                      >
+                        <Icon name="ShoppingCart" size={16} className="mr-2" />
+                        Симуляция покупки ({terminal.price}₽)
+                      </Button>
                     </div>
                   ))}
                 </div>
