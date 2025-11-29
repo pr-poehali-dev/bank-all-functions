@@ -233,14 +233,14 @@ const Index = () => {
     }, 1500);
   };
 
-  const getTransactionIcon = (type: string) => {
+  const getTransactionIcon = (type: string): string => {
     if (type === 'topup') return 'ArrowDownToLine';
     if (type === 'purchase') return 'Coins';
     if (type === 'receive') return 'ArrowDown';
     return 'ArrowUp';
   };
   
-  const getTransactionLabel = (type: string) => {
+  const getTransactionLabel = (type: string): string => {
     if (type === 'topup') return 'Пополнение';
     if (type === 'purchase') return 'Доход';
     if (type === 'receive') return 'Получено';
